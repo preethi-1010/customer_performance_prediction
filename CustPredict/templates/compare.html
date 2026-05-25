@@ -1,0 +1,637 @@
+{% extends "base.html" %}
+{% block title %}Compare Customers – CustPredict{% endblock %}
+{% block page_title %}Customer Comparison{% endblock %}
+
+{% block content %}
+
+<!-- ══ CUSTOMER PICKER ══ -->
+<div class="data-card p-4 mb-4">
+  <h5 class="section-heading mb-4">
+    <i class="bi bi-layout-split me-2" style="color:var(--accent-blue);"></i>
+    Select Two Customers to Compare
+  </h5>
+  <form method="GET" action="{{ url_for('compare') }}" id="compareForm">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label-custom">Customer A</label>
+        <select name="a" class="form-control form-control-custom" required>
+          <option value="">— Select customer A —</option>
+          {% for c in all_customers %}
+          <option value="{{ c.id }}"
+            {{ 'selected' if id_a == c.id }}>
+            {{ c.name }} ({{ c.segment }} · CLV {{ "%.0f"|format(c.clv_score) }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-1 text-center">
+        <div class="vs-badge">VS</div>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label-custom">Customer B</label>
+        <select name="b" class="form-control form-control-custom" required>
+          <option value="">— Select customer B —</option>
+          {% for c in all_customers %}
+          <option value="{{ c.id }}"
+            {{ 'selected' if id_b == c.id }}>
+            {{ c.name }} ({{ c.segment }} · CLV {{ "%.0f"|format(c.clv_score) }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-1">
+        <button type="submit" class="btn-predict w-100" style="padding:10px;">
+          <i class="bi bi-arrow-right-circle-fill"></i>
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if cust_a and cust_b %}
+
+<!-- ══ PROFILE HEADERS ══ -->
+<div class="compare-grid mb-4">
+
+  <!-- Spacer -->
+  <div class="cmp-label-col"></div>
+
+  <!-- Customer A header -->
+  <div class="cmp-val-col cmp-col-a">
+    <div class="cmp-profile-card">
+      <div class="cmp-avatar cmp-avatar-a">{{ cust_a.name[0].upper() }}</div>
+      <h4>{{ cust_a.name }}</h4>
+      <p class="text-muted">{{ cust_a.gender }}, {{ cust_a.age }} yrs</p>
+      <span class="badge-pill badge-status-{{ cust_a.status|lower|replace(' ','-') }}">
+        {{ cust_a.status }}
+      </span>
+      <div class="mt-2">
+        <a href="{{ url_for('customer_detail', cid=cust_a.id) }}"
+           class="btn-sm-pill" style="font-size:11px;">
+          View Profile →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer B header -->
+  <div class="cmp-val-col cmp-col-b">
+    <div class="cmp-profile-card">
+      <div class="cmp-avatar cmp-avatar-b">{{ cust_b.name[0].upper() }}</div>
+      <h4>{{ cust_b.name }}</h4>
+      <p class="text-muted">{{ cust_b.gender }}, {{ cust_b.age }} yrs</p>
+      <span class="badge-pill badge-status-{{ cust_b.status|lower|replace(' ','-') }}">
+        {{ cust_b.status }}
+      </span>
+      <div class="mt-2">
+        <a href="{{ url_for('customer_detail', cid=cust_b.id) }}"
+           class="btn-sm-pill" style="font-size:11px;">
+          View Profile →
+        </a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ SECTION 1 — BASIC STATS ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-person-lines-fill me-2"></i>Basic Information
+</div>
+<div class="cmp-table mb-4">
+
+  {% macro cmp_row(label, val_a, val_b, diff_val=None, higher_is_better=True, fmt='plain') %}
+  <div class="cmp-row">
+    <div class="cmp-label-col">{{ label }}</div>
+    <div class="cmp-val-col cmp-col-a {{ 'cmp-winner' if diff_val is not none and ((diff_val > 0 and higher_is_better) or (diff_val < 0 and not higher_is_better)) }}">
+      {{ val_a }}
+    </div>
+    <div class="cmp-val-col cmp-col-b {{ 'cmp-winner' if diff_val is not none and ((diff_val < 0 and higher_is_better) or (diff_val > 0 and not higher_is_better)) }}">
+      {{ val_b }}
+    </div>
+  </div>
+  {% endmacro %}
+
+  {{ cmp_row('Age', cust_a.age ~ ' yrs', cust_b.age ~ ' yrs') }}
+  {{ cmp_row('Gender', cust_a.gender, cust_b.gender) }}
+  {{ cmp_row('Purchase Freq',
+      cust_a.purchase_freq ~ '/yr',
+      cust_b.purchase_freq ~ '/yr',
+      diff.purchase_freq, True) }}
+  {{ cmp_row('Total Spending',
+      '$' ~ "%.0f"|format(cust_a.total_spending),
+      '$' ~ "%.0f"|format(cust_b.total_spending),
+      diff.total_spending, True) }}
+  {{ cmp_row('Last Purchase',
+      cust_a.last_purchase_date.strftime('%d %b %Y'),
+      cust_b.last_purchase_date.strftime('%d %b %Y')) }}
+  {{ cmp_row('Tags',
+      cust_a.tags or '—',
+      cust_b.tags or '—') }}
+</div>
+
+<!-- ══ SECTION 2 — CLV SCORES ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-graph-up-arrow me-2"></i>Customer Lifetime Value (CLV)
+</div>
+<div class="data-card p-4 mb-4">
+  <div class="row g-4">
+
+    <!-- A gauge -->
+    <div class="col-md-5 text-center">
+      <div class="cmp-clv-label cmp-label-a">{{ cust_a.name }}</div>
+      <svg viewBox="0 0 200 120" style="width:180px;height:110px;">
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#1e2a3a" stroke-width="16" stroke-linecap="round"/>
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none"
+              stroke="{% if cust_a.clv_score>=66 %}#00d97e{% elif cust_a.clv_score>=33 %}#ffd166{% else %}#ff4d6d{% endif %}"
+              stroke-width="16" stroke-linecap="round"
+              stroke-dasharray="{{ (cust_a.clv_score/100)*251.2 }} 251.2"/>
+        <text x="100" y="95" text-anchor="middle" font-family="Syne,sans-serif"
+              font-weight="800" font-size="30" fill="#e8edf5">{{ "%.0f"|format(cust_a.clv_score) }}</text>
+        <text x="100" y="112" text-anchor="middle" font-family="DM Sans,sans-serif"
+              font-size="11" fill="#8892a4">/ 100</text>
+      </svg>
+      <div class="cmp-clv-tier">
+        <span class="badge-pill {% if cust_a.clv_score>=66 %}badge-success{% elif cust_a.clv_score>=33 %}badge-gold{% else %}badge-danger{% endif %}">
+          {% if cust_a.clv_score>=66 %}High Value{% elif cust_a.clv_score>=33 %}Medium Value{% else %}Low Value{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <!-- Diff indicator -->
+    <div class="col-md-2 d-flex align-items-center justify-content-center">
+      <div class="cmp-diff-badge">
+        {% set clv_diff = diff.clv_score %}
+        <div class="cmp-diff-arrow {{ 'diff-up' if clv_diff > 0 else ('diff-down' if clv_diff < 0 else 'diff-equal') }}">
+          {% if clv_diff > 0 %}▲{% elif clv_diff < 0 %}▼{% else %}═{% endif %}
+        </div>
+        <div class="cmp-diff-val">{{ '%+.1f'|format(clv_diff) }}</div>
+        <div class="cmp-diff-label">CLV diff</div>
+      </div>
+    </div>
+
+    <!-- B gauge -->
+    <div class="col-md-5 text-center">
+      <div class="cmp-clv-label cmp-label-b">{{ cust_b.name }}</div>
+      <svg viewBox="0 0 200 120" style="width:180px;height:110px;">
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#1e2a3a" stroke-width="16" stroke-linecap="round"/>
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none"
+              stroke="{% if cust_b.clv_score>=66 %}#00d97e{% elif cust_b.clv_score>=33 %}#ffd166{% else %}#ff4d6d{% endif %}"
+              stroke-width="16" stroke-linecap="round"
+              stroke-dasharray="{{ (cust_b.clv_score/100)*251.2 }} 251.2"/>
+        <text x="100" y="95" text-anchor="middle" font-family="Syne,sans-serif"
+              font-weight="800" font-size="30" fill="#e8edf5">{{ "%.0f"|format(cust_b.clv_score) }}</text>
+        <text x="100" y="112" text-anchor="middle" font-family="DM Sans,sans-serif"
+              font-size="11" fill="#8892a4">/ 100</text>
+      </svg>
+      <div class="cmp-clv-tier">
+        <span class="badge-pill {% if cust_b.clv_score>=66 %}badge-success{% elif cust_b.clv_score>=33 %}badge-gold{% else %}badge-danger{% endif %}">
+          {% if cust_b.clv_score>=66 %}High Value{% elif cust_b.clv_score>=33 %}Medium Value{% else %}Low Value{% endif %}
+        </span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ SECTION 3 — CHURN PREDICTIONS ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-exclamation-triangle me-2"></i>Churn Predictions — 3 Models
+</div>
+<div class="cmp-table mb-4">
+
+  <!-- Churn probability bars -->
+  {% for label, prob_a, prob_b, churn_a, churn_b in [
+    ('Logistic Regression', cust_a.churn_prob_lr, cust_b.churn_prob_lr, cust_a.churn_lr, cust_b.churn_lr),
+    ('Random Forest',       cust_a.churn_prob_rf, cust_b.churn_prob_rf, cust_a.churn_rf, cust_b.churn_rf),
+    ('XGBoost',             cust_a.churn_prob_xgb, cust_b.churn_prob_xgb, cust_a.churn_xgb, cust_b.churn_xgb),
+  ] %}
+  <div class="cmp-row cmp-row-tall">
+    <div class="cmp-label-col">{{ label }}</div>
+    <div class="cmp-val-col cmp-col-a {{ 'cmp-winner' if prob_a < prob_b }}">
+      <div class="cmp-prob-block">
+        <span class="badge-pill {{ 'badge-danger' if churn_a=='Yes' else 'badge-success' }}">
+          {{ churn_a }}
+        </span>
+        <div class="cmp-prob-bar-wrap">
+          <div class="cmp-prob-bar"
+               style="width:{{ prob_a }}%;
+                      background:{{ '#ff4d6d' if churn_a=='Yes' else '#00d97e' }};">
+          </div>
+        </div>
+        <span class="cmp-prob-pct {{ 'cmp-danger-text' if churn_a=='Yes' else 'cmp-safe-text' }}">
+          {{ "%.1f"|format(prob_a) }}%
+        </span>
+      </div>
+    </div>
+    <div class="cmp-val-col cmp-col-b {{ 'cmp-winner' if prob_b < prob_a }}">
+      <div class="cmp-prob-block">
+        <span class="badge-pill {{ 'badge-danger' if churn_b=='Yes' else 'badge-success' }}">
+          {{ churn_b }}
+        </span>
+        <div class="cmp-prob-bar-wrap">
+          <div class="cmp-prob-bar"
+               style="width:{{ prob_b }}%;
+                      background:{{ '#ff4d6d' if churn_b=='Yes' else '#00d97e' }};">
+          </div>
+        </div>
+        <span class="cmp-prob-pct {{ 'cmp-danger-text' if churn_b=='Yes' else 'cmp-safe-text' }}">
+          {{ "%.1f"|format(prob_b) }}%
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Value tier row -->
+  <div class="cmp-row">
+    <div class="cmp-label-col">Value (RF)</div>
+    <div class="cmp-val-col cmp-col-a">
+      <span class="badge-pill {{ 'badge-gold' if cust_a.value_rf=='High' else ('badge-blue' if cust_a.value_rf=='Medium' else 'badge-gray') }}">
+        {{ cust_a.value_rf }}
+      </span>
+    </div>
+    <div class="cmp-val-col cmp-col-b">
+      <span class="badge-pill {{ 'badge-gold' if cust_b.value_rf=='High' else ('badge-blue' if cust_b.value_rf=='Medium' else 'badge-gray') }}">
+        {{ cust_b.value_rf }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Segment row -->
+  <div class="cmp-row">
+    <div class="cmp-label-col">K-Means Segment</div>
+    <div class="cmp-val-col cmp-col-a">
+      <span class="badge-pill {{ 'badge-gold' if cust_a.segment=='Gold' else ('badge-silver' if cust_a.segment=='Silver' else 'badge-bronze') }}">
+        {{ cust_a.segment }}
+      </span>
+    </div>
+    <div class="cmp-val-col cmp-col-b">
+      <span class="badge-pill {{ 'badge-gold' if cust_b.segment=='Gold' else ('badge-silver' if cust_b.segment=='Silver' else 'badge-bronze') }}">
+        {{ cust_b.segment }}
+      </span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ SECTION 4 — RADAR CHART ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-radar me-2"></i>Side-by-Side Radar
+</div>
+<div class="data-card p-4 mb-4">
+  <canvas id="radarCompare" height="120"></canvas>
+</div>
+
+<!-- ══ SECTION 5 — SHAP COMPARISON ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-bar-chart-horizontal me-2"></i>SHAP Feature Contributions
+</div>
+<div class="row g-4 mb-4">
+
+  <!-- A SHAP -->
+  <div class="col-md-6">
+    <div class="data-card p-4">
+      <div class="cmp-shap-header cmp-label-a">
+        <div class="cmp-shap-dot cmp-dot-a"></div>
+        {{ cust_a.name }}
+      </div>
+      <canvas id="shapA" height="200"></canvas>
+      <p class="shap-hint mt-2">
+        <span class="shap-pos-text">■ Red = ↑ churn</span> &nbsp;
+        <span class="shap-neg-text">■ Blue = ↓ churn</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- B SHAP -->
+  <div class="col-md-6">
+    <div class="data-card p-4">
+      <div class="cmp-shap-header cmp-label-b">
+        <div class="cmp-shap-dot cmp-dot-b"></div>
+        {{ cust_b.name }}
+      </div>
+      <canvas id="shapB" height="200"></canvas>
+      <p class="shap-hint mt-2">
+        <span class="shap-pos-text">■ Red = ↑ churn</span> &nbsp;
+        <span class="shap-neg-text">■ Blue = ↓ churn</span>
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ SECTION 6 — SHAP DELTA CHART ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-arrows-expand-vertical me-2"></i>SHAP Delta (A minus B)
+</div>
+<div class="data-card p-4 mb-4">
+  <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+    Shows how much higher/lower each feature pushes churn risk for
+    <strong style="color:#4f8ef7;">{{ cust_a.name }}</strong>
+    compared to
+    <strong style="color:#ffd166;">{{ cust_b.name }}</strong>.
+  </p>
+  <canvas id="shapDelta" height="130"></canvas>
+</div>
+
+<!-- ══ SECTION 7 — PREDICTION HISTORY ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-graph-up me-2"></i>Churn Risk History
+</div>
+<div class="data-card p-4 mb-4">
+  {% if hist_a|length >= 2 or hist_b|length >= 2 %}
+  <canvas id="histChart" height="120"></canvas>
+  <p style="font-size:11px;color:var(--text-muted);margin-top:8px;text-align:center;">
+    History grows each time you edit and re-predict a customer.
+  </p>
+  {% else %}
+  <div class="empty-state" style="padding:30px;">
+    <div class="empty-icon" style="width:48px;height:48px;font-size:20px;">
+      <i class="bi bi-graph-up"></i>
+    </div>
+    <p class="text-muted" style="font-size:13px;margin:0;">
+      Edit and re-predict customers to build a history for this chart.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ══ SECTION 8 — WINNER SUMMARY ══ -->
+<div class="cmp-section-title">
+  <i class="bi bi-trophy me-2"></i>Summary Scorecard
+</div>
+<div class="data-card p-4 mb-4">
+  <div class="row g-3">
+
+    {% set metrics = [
+      ('CLV Score',        cust_a.clv_score,     cust_b.clv_score,     True,  '%.1f', ''),
+      ('Churn Risk (RF)',  cust_a.churn_prob_rf,  cust_b.churn_prob_rf, False, '%.1f', '%'),
+      ('Total Spending',   cust_a.total_spending, cust_b.total_spending,True,  '$%.0f',''),
+      ('Purchase Freq',    cust_a.purchase_freq,  cust_b.purchase_freq, True,  '%d',   '/yr'),
+    ] %}
+
+    {% for label, val_a, val_b, higher_better, fmt, suffix in metrics %}
+    {% set a_wins = (val_a > val_b and higher_better) or (val_a < val_b and not higher_better) %}
+    {% set b_wins = (val_b > val_a and higher_better) or (val_b < val_a and not higher_better) %}
+    <div class="col-md-3">
+      <div class="scorecard-cell">
+        <div class="sc-label">{{ label }}</div>
+        <div class="sc-body">
+          <div class="sc-val {{ 'sc-winner' if a_wins }}">
+            {% if '$' in fmt %}${{ "%.0f"|format(val_a) }}{% else %}{{ fmt|format(val_a) }}{% endif %}{{ suffix }}
+            {% if a_wins %}<i class="bi bi-trophy-fill sc-trophy"></i>{% endif %}
+          </div>
+          <div class="sc-vs">vs</div>
+          <div class="sc-val {{ 'sc-winner' if b_wins }}">
+            {% if '$' in fmt %}${{ "%.0f"|format(val_b) }}{% else %}{{ fmt|format(val_b) }}{% endif %}{{ suffix }}
+            {% if b_wins %}<i class="bi bi-trophy-fill sc-trophy"></i>{% endif %}
+          </div>
+        </div>
+        <div class="sc-names">
+          <span style="color:#4f8ef7;">{{ cust_a.name.split()[0] }}</span>
+          <span style="color:#ffd166;">{{ cust_b.name.split()[0] }}</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+<!-- ══ ACTION BUTTONS ══ -->
+<div style="display:flex;gap:10px;flex-wrap:wrap;">
+  <a href="{{ url_for('customer_detail', cid=cust_a.id) }}"
+     class="btn-action-pill btn-blue">
+    <i class="bi bi-person me-1"></i>View {{ cust_a.name }}
+  </a>
+  <a href="{{ url_for('customer_detail', cid=cust_b.id) }}"
+     class="btn-action-pill btn-orange">
+    <i class="bi bi-person me-1"></i>View {{ cust_b.name }}
+  </a>
+  <a href="{{ url_for('compare') }}" class="btn-action-pill btn-gray">
+    <i class="bi bi-arrow-repeat me-1"></i>Compare Others
+  </a>
+</div>
+
+{% else %}
+
+<!-- ── Empty state when no customers selected ── -->
+<div class="empty-state">
+  <div class="empty-icon"><i class="bi bi-layout-split"></i></div>
+  <h5>Select Two Customers Above</h5>
+  <p>
+    The comparison tool shows predictions, CLV gauges, SHAP values,<br>
+    churn history, and a trophy scorecard side by side.
+  </p>
+  <div class="model-chips">
+    <span class="chip"><i class="bi bi-check2-circle"></i>CLV Gauge</span>
+    <span class="chip"><i class="bi bi-check2-circle"></i>Churn vs 3 models</span>
+    <span class="chip"><i class="bi bi-check2-circle"></i>SHAP side-by-side</span>
+    <span class="chip"><i class="bi bi-check2-circle"></i>SHAP delta chart</span>
+    <span class="chip"><i class="bi bi-check2-circle"></i>History overlay</span>
+    <span class="chip"><i class="bi bi-check2-circle"></i>Scorecard</span>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+
+{% block extra_js %}
+{% if cust_a and cust_b %}
+<script>
+Chart.defaults.color = '#8892a4';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+const GRID = 'rgba(255,255,255,.05)';
+
+// ── Radar chart ──────────────────────────────────────────────────────────────
+new Chart(document.getElementById('radarCompare'), {
+  type: 'radar',
+  data: {
+    labels: ['CLV Score','Churn Risk','Value Score','Segment Score','Spend Score','Freq Score'],
+    datasets: [
+      {
+        label: '{{ cust_a.name }}',
+        data: [
+          {{ cust_a.clv_score }},
+          {{ cust_a.churn_prob_rf }},
+          {{ 90 if cust_a.value_rf=='High' else (55 if cust_a.value_rf=='Medium' else 20) }},
+          {{ 90 if cust_a.segment=='Gold' else (55 if cust_a.segment=='Silver' else 20) }},
+          {{ [((cust_a.total_spending / 5000) * 100)|round, 100]|min }},
+          {{ [((cust_a.purchase_freq / 50) * 100)|round, 100]|min }},
+        ],
+        backgroundColor: 'rgba(79,142,247,.2)',
+        borderColor: '#4f8ef7',
+        pointBackgroundColor: '#4f8ef7',
+        borderWidth: 2,
+      },
+      {
+        label: '{{ cust_b.name }}',
+        data: [
+          {{ cust_b.clv_score }},
+          {{ cust_b.churn_prob_rf }},
+          {{ 90 if cust_b.value_rf=='High' else (55 if cust_b.value_rf=='Medium' else 20) }},
+          {{ 90 if cust_b.segment=='Gold' else (55 if cust_b.segment=='Silver' else 20) }},
+          {{ [((cust_b.total_spending / 5000) * 100)|round, 100]|min }},
+          {{ [((cust_b.purchase_freq / 50) * 100)|round, 100]|min }},
+        ],
+        backgroundColor: 'rgba(255,209,102,.18)',
+        borderColor: '#ffd166',
+        pointBackgroundColor: '#ffd166',
+        borderWidth: 2,
+      }
+    ]
+  },
+  options: {
+    scales: {
+      r: {
+        min: 0, max: 100,
+        ticks: { display: false },
+        grid: { color: '#1e2a3a' },
+        pointLabels: { font: { size: 11 }, color: '#8892a4' }
+      }
+    },
+    plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } }
+  }
+});
+
+// ── SHAP chart A ─────────────────────────────────────────────────────────────
+const shapA = {{ shap_a|tojson }};
+const labelsA = Object.keys(shapA);
+const valsA   = Object.values(shapA);
+new Chart(document.getElementById('shapA'), {
+  type: 'bar',
+  data: {
+    labels: labelsA,
+    datasets: [{
+      data: valsA,
+      backgroundColor: valsA.map(v => v > 0 ? 'rgba(255,77,109,.72)' : 'rgba(79,142,247,.72)'),
+      borderRadius: 5, borderSkipped: false,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: GRID } },
+      y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+// ── SHAP chart B ─────────────────────────────────────────────────────────────
+const shapB = {{ shap_b|tojson }};
+const labelsB = Object.keys(shapB);
+const valsB   = Object.values(shapB);
+new Chart(document.getElementById('shapB'), {
+  type: 'bar',
+  data: {
+    labels: labelsB,
+    datasets: [{
+      data: valsB,
+      backgroundColor: valsB.map(v => v > 0 ? 'rgba(255,77,109,.72)' : 'rgba(255,209,102,.72)'),
+      borderRadius: 5, borderSkipped: false,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: GRID } },
+      y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+// ── SHAP Delta chart ─────────────────────────────────────────────────────────
+const allFeatures = {{ all_features|tojson }};
+const deltaVals   = allFeatures.map(f => {
+  const a = shapA[f] || 0;
+  const b = shapB[f] || 0;
+  return parseFloat((a - b).toFixed(4));
+});
+new Chart(document.getElementById('shapDelta'), {
+  type: 'bar',
+  data: {
+    labels: allFeatures,
+    datasets: [{
+      label: 'SHAP Delta (A − B)',
+      data: deltaVals,
+      backgroundColor: deltaVals.map(v => v > 0 ? 'rgba(79,142,247,.75)' : 'rgba(255,209,102,.75)'),
+      borderRadius: 6, borderSkipped: false,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.raw;
+            return v > 0
+              ? `${ctx.label}: A higher by ${v.toFixed(3)}`
+              : `${ctx.label}: B higher by ${Math.abs(v).toFixed(3)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: GRID },
+        title: { display: true, text: '← B higher    A higher →', color: '#8892a4', font: { size: 11 } }
+      },
+      y: { grid: { display: false } }
+    }
+  }
+});
+
+// ── History overlay chart ────────────────────────────────────────────────────
+{% if hist_a|length >= 2 or hist_b|length >= 2 %}
+const hA = {{ hist_a|tojson }};
+const hB = {{ hist_b|tojson }};
+new Chart(document.getElementById('histChart'), {
+  type: 'line',
+  data: {
+    labels: hA.length >= hB.length
+      ? hA.map(p => p.date)
+      : hB.map(p => p.date),
+    datasets: [
+      {
+        label: '{{ cust_a.name }} Churn %',
+        data: hA.map(p => p.prob),
+        borderColor: '#4f8ef7',
+        backgroundColor: 'rgba(79,142,247,.1)',
+        fill: true, tension: 0.4,
+        pointRadius: 5, pointBackgroundColor: '#4f8ef7',
+        pointBorderColor: '#fff', pointBorderWidth: 2,
+      },
+      {
+        label: '{{ cust_b.name }} Churn %',
+        data: hB.map(p => p.prob),
+        borderColor: '#ffd166',
+        backgroundColor: 'rgba(255,209,102,.08)',
+        fill: true, tension: 0.4,
+        pointRadius: 5, pointBackgroundColor: '#ffd166',
+        pointBorderColor: '#fff', pointBorderWidth: 2,
+        borderDash: [5,3],
+      }
+    ]
+  },
+  options: {
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 12 } },
+      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '%' } }
+    },
+    scales: {
+      y: { min: 0, max: 100, grid: { color: GRID }, ticks: { callback: v => v + '%' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+{% endif %}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Data Quality Checker – CustPredict{% endblock %}
+{% block page_title %}Data Quality Checker{% endblock %}
+
+{% block content %}
+
+<!-- ── INTRO CARDS ── -->
+<div class="row g-4 mb-4">
+  <div class="col-md-4">
+    <div class="kpi-card kpi-blue" style="cursor:default;">
+      <div class="kpi-icon"><i class="bi bi-shield-check"></i></div>
+      <div class="kpi-body">
+        <span class="kpi-label">What It Checks</span>
+        <span style="font-size:12px;color:var(--text-secondary);margin-top:4px;display:block;">
+          Missing values · Outliers · Invalid ranges · Suspicious patterns · Cross-field logic
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="kpi-card kpi-green" style="cursor:default;">
+      <div class="kpi-icon"><i class="bi bi-file-earmark-spreadsheet"></i></div>
+      <div class="kpi-body">
+        <span class="kpi-label">CSV Mode</span>
+        <span style="font-size:12px;color:var(--text-secondary);margin-top:4px;display:block;">
+          Upload any CSV to get a full row-by-row quality report before importing
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="kpi-card kpi-purple" style="cursor:default;">
+      <div class="kpi-icon"><i class="bi bi-person-check"></i></div>
+      <div class="kpi-body">
+        <span class="kpi-label">Single Record Mode</span>
+        <span style="font-size:12px;color:var(--text-secondary);margin-top:4px;display:block;">
+          Validate one customer manually before predicting — live feedback as you type
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB SWITCHER ── -->
+<div class="dq-tabs mb-4">
+  <button class="dq-tab {% if mode != 'single' %}dq-tab-active{% endif %}"
+          onclick="switchTab('csv')">
+    <i class="bi bi-file-earmark-spreadsheet me-2"></i>CSV File Check
+  </button>
+  <button class="dq-tab {% if mode == 'single' %}dq-tab-active{% endif %}"
+          onclick="switchTab('single')">
+    <i class="bi bi-person-check me-2"></i>Single Record Check
+  </button>
+</div>
+
+<!-- ══ CSV TAB ══ -->
+<div id="tab-csv" {% if mode == 'single' %}style="display:none;"{% endif %}>
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="data-card p-4">
+        <h5 class="section-heading mb-4">
+          <i class="bi bi-upload me-2" style="color:var(--accent-blue);"></i>Upload CSV
+        </h5>
+        <form method="POST" enctype="multipart/form-data" action="{{ url_for('data_quality') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="mode" value="csv"/>
+
+          <div class="mb-3">
+            <label class="form-label-custom">Select CSV File</label>
+            <input type="file" name="csv_file" accept=".csv"
+                   class="form-control form-control-custom" required/>
+            <small class="text-muted">Max 10MB · UTF-8 or Excel format</small>
+          </div>
+
+          <button type="submit" class="btn-predict w-100">
+            <i class="bi bi-shield-check me-2"></i>Run Quality Check
+          </button>
+        </form>
+
+        <div class="mt-4 p-3" style="background:var(--bg-elevated);border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <h6 style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">
+            REQUIRED COLUMNS
+          </h6>
+          <div style="font-size:12px;color:var(--accent-cyan);font-family:monospace;line-height:2;">
+            name<br>age<br>gender<br>purchase_freq<br>total_spending<br>last_purchase_date
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <a href="{{ url_for('export_csv') }}" class="btn-sm-pill" style="font-size:12px;">
+            <i class="bi bi-download me-1"></i>Download your data as CSV template
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      {% if report and mode == 'csv' %}
+
+        <!-- ── OVERALL SCORE ── -->
+        <div class="data-card p-4 mb-4">
+          <div class="dq-score-header">
+            <div class="dq-score-circle"
+                 style="background:conic-gradient(
+                   {{ '#00d97e' if report.avg_score >= 80 else ('#ffd166' if report.avg_score >= 50 else '#ff4d6d') }}
+                   {{ report.avg_score * 3.6 }}deg, #1e2a3a 0deg);">
+              <div class="dq-score-inner">
+                <span class="dq-score-num">{{ report.avg_score }}</span>
+                <span class="dq-score-label">/100</span>
+              </div>
+            </div>
+            <div class="dq-score-breakdown">
+              <h4 class="mb-1">
+                {% if report.avg_score >= 80 %}✅ Good Quality
+                {% elif report.avg_score >= 50 %}⚠️ Needs Attention
+                {% else %}❌ Poor Quality{% endif %}
+              </h4>
+              <p class="text-muted mb-3" style="font-size:13px;">
+                Average data quality score across {{ report.total_rows }} rows
+              </p>
+              <div class="row g-3">
+                <div class="col-3 text-center">
+                  <div class="dq-stat-val">{{ report.total_rows }}</div>
+                  <div class="dq-stat-label">Total Rows</div>
+                </div>
+                <div class="col-3 text-center">
+                  <div class="dq-stat-val" style="color:var(--accent-green);">{{ report.clean_rows }}</div>
+                  <div class="dq-stat-label">Clean</div>
+                </div>
+                <div class="col-3 text-center">
+                  <div class="dq-stat-val" style="color:var(--accent-gold);">{{ report.warning_rows }}</div>
+                  <div class="dq-stat-label">Warnings</div>
+                </div>
+                <div class="col-3 text-center">
+                  <div class="dq-stat-val" style="color:var(--accent-red);">{{ report.critical_rows }}</div>
+                  <div class="dq-stat-label">Critical</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Can import? -->
+          {% if report.can_import %}
+          <div class="dq-banner dq-banner-success mt-3">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <strong>Ready to import!</strong> No critical issues found.
+            <a href="{{ url_for('import_csv') }}" class="ms-2"
+               style="color:var(--accent-green);font-weight:600;">Go to Import →</a>
+          </div>
+          {% else %}
+          <div class="dq-banner dq-banner-danger mt-3">
+            <i class="bi bi-x-circle-fill me-2"></i>
+            <strong>{{ report.critical_rows }} row(s) have critical issues</strong> that must be fixed before importing.
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- ── FIELD ISSUE SUMMARY ── -->
+        {% if report.field_counts %}
+        <div class="data-card p-4 mb-4">
+          <h6 class="section-heading mb-3">
+            <i class="bi bi-bar-chart-horizontal me-2" style="color:var(--accent-purple);"></i>
+            Issues by Field
+          </h6>
+          <div class="row g-3">
+            {% for field, count in report.field_counts.items()|sort(attribute='1', reverse=true) %}
+            <div class="col-md-4">
+              <div class="field-issue-card">
+                <div class="fi-field">{{ field.replace('_',' ')|title }}</div>
+                <div class="fi-count">{{ count }}</div>
+                <div class="fi-bar">
+                  <div class="fi-bar-fill"
+                       style="width:{{ [count * 10, 100]|min }}%;
+                              background:{{ '#ff4d6d' if count >= 5 else ('#ffd166' if count >= 2 else '#4f8ef7') }};">
+                  </div>
+                </div>
+                <div class="fi-label">{{ 'issues' if count != 1 else 'issue' }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- ── PER-ROW RESULTS TABLE ── -->
+        <div class="data-card">
+          <div class="data-card-header">
+            <h6>Row-by-Row Results</h6>
+            <div style="display:flex;gap:8px;font-size:11px;">
+              <span class="badge-pill badge-success">{{ report.clean_rows }} clean</span>
+              <span class="badge-pill badge-gold">{{ report.warning_rows }} warnings</span>
+              <span class="badge-pill badge-danger">{{ report.critical_rows }} critical</span>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height:440px;overflow-y:auto;">
+            <table class="table custom-table">
+              <thead style="position:sticky;top:0;z-index:1;">
+                <tr>
+                  <th>Row</th><th>Name</th><th>Score</th>
+                  <th>Status</th><th>Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in report.rows %}
+                <tr>
+                  <td class="text-muted">{{ row.row }}</td>
+                  <td><strong>{{ row.name }}</strong></td>
+                  <td>
+                    <div class="score-pill"
+                         style="background:{{ '#00d97e' if row.score==100 else ('#ffd166' if row.score>=50 else '#ff4d6d') }}22;
+                                color:{{ '#00d97e' if row.score==100 else ('#ffd166' if row.score>=50 else '#ff4d6d') }};
+                                border:1px solid {{ '#00d97e' if row.score==100 else ('#ffd166' if row.score>=50 else '#ff4d6d') }}44;">
+                      {{ row.score }}/100
+                    </div>
+                  </td>
+                  <td>
+                    {% if row.passed and row.score == 100 %}
+                      <span class="badge-pill badge-success">✓ Clean</span>
+                    {% elif row.passed %}
+                      <span class="badge-pill badge-gold">⚠ Warning</span>
+                    {% else %}
+                      <span class="badge-pill badge-danger">✗ Critical</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.issues %}
+                      {% for issue in row.issues %}
+                        <div class="dq-issue-line dq-issue-{{ issue.severity }}">
+                          <i class="bi bi-{% if issue.severity=='critical' %}x-circle-fill{% elif issue.severity=='warning' %}exclamation-triangle-fill{% else %}info-circle{% endif %} me-1"></i>
+                          {{ issue.message }}
+                        </div>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted" style="font-size:12px;">No issues</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon"><i class="bi bi-file-earmark-spreadsheet"></i></div>
+          <h5>Upload a CSV to Check</h5>
+          <p>
+            Your CSV will be scanned for missing values, outliers, invalid ranges,<br>
+            suspicious patterns, and cross-field logic errors.
+          </p>
+          <div class="model-chips">
+            <span class="chip"><i class="bi bi-check2-circle"></i>Missing values</span>
+            <span class="chip"><i class="bi bi-check2-circle"></i>Age outliers</span>
+            <span class="chip"><i class="bi bi-check2-circle"></i>Negative spending</span>
+            <span class="chip"><i class="bi bi-check2-circle"></i>Future dates</span>
+            <span class="chip"><i class="bi bi-check2-circle"></i>Cross-field logic</span>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div><!-- end csv row -->
+</div>
+
+<!-- ══ SINGLE RECORD TAB ══ -->
+<div id="tab-single" {% if mode != 'single' %}style="display:none;"{% endif %}>
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <div class="data-card p-4">
+        <h5 class="section-heading mb-4">
+          <i class="bi bi-person-check me-2" style="color:var(--accent-purple);"></i>
+          Validate a Record
+        </h5>
+        <form method="POST" action="{{ url_for('data_quality') }}" id="singleQcForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="mode" value="single"/>
+
+          <div class="mb-3">
+            <label class="form-label-custom">Full Name</label>
+            <input type="text" name="name" id="qcName"
+                   value="{{ single_qc.inputs.name if single_qc else '' }}"
+                   class="form-control form-control-custom" placeholder="e.g. Priya Sharma"/>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label-custom">Age</label>
+              <input type="text" name="age" id="qcAge"
+                     value="{{ single_qc.inputs.age if single_qc else '' }}"
+                     class="form-control form-control-custom" placeholder="30"/>
+            </div>
+            <div class="col-6">
+              <label class="form-label-custom">Gender</label>
+              <select name="gender" id="qcGender" class="form-control form-control-custom">
+                <option value="">Select…</option>
+                <option value="Male"   {{ 'selected' if single_qc and single_qc.inputs.gender=='Male' }}>Male</option>
+                <option value="Female" {{ 'selected' if single_qc and single_qc.inputs.gender=='Female' }}>Female</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label-custom">Purchase Frequency (per year)</label>
+            <input type="text" name="purchase_freq" id="qcFreq"
+                   value="{{ single_qc.inputs.purchase_freq if single_qc else '' }}"
+                   class="form-control form-control-custom" placeholder="12"/>
+          </div>
+          <div class="mb-3">
+            <label class="form-label-custom">Total Spending (USD)</label>
+            <input type="text" name="total_spending" id="qcSpend"
+                   value="{{ single_qc.inputs.total_spending if single_qc else '' }}"
+                   class="form-control form-control-custom" placeholder="1250.00"/>
+          </div>
+          <div class="mb-4">
+            <label class="form-label-custom">Last Purchase Date</label>
+            <input type="date" name="last_purchase_date" id="qcDate"
+                   value="{{ single_qc.inputs.last_purchase_date if single_qc else '' }}"
+                   class="form-control form-control-custom"/>
+          </div>
+
+          <button type="submit" class="btn-predict w-100">
+            <i class="bi bi-shield-check me-2"></i>Check Quality
+          </button>
+        </form>
+
+        <!-- Live QC indicator -->
+        <div id="liveQcBar" class="mt-3" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:12px;color:var(--text-secondary);">Live Quality Score</span>
+            <span id="liveQcScore" style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;"></span>
+          </div>
+          <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+            <div id="liveQcFill" style="height:100%;border-radius:3px;transition:width .4s,background .4s;width:0%;"></div>
+          </div>
+          <div id="liveQcMsg" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      {% if single_qc and mode == 'single' %}
+      <div class="data-card p-4 mb-4">
+
+        <!-- Score circle -->
+        <div class="dq-single-result">
+          <div class="dq-single-circle"
+               style="background:conic-gradient(
+                 {{ '#00d97e' if single_qc.score >= 80 else ('#ffd166' if single_qc.score >= 50 else '#ff4d6d') }}
+                 {{ single_qc.score * 3.6 }}deg, #1e2a3a 0deg);">
+            <div class="dq-score-inner">
+              <span class="dq-score-num">{{ single_qc.score }}</span>
+              <span class="dq-score-label">/100</span>
+            </div>
+          </div>
+          <div>
+            <h5 class="mb-1">
+              {% if single_qc.score == 100 %}✅ Perfect Record
+              {% elif single_qc.score >= 80 %}👍 Good Record
+              {% elif single_qc.score >= 50 %}⚠️ Needs Review
+              {% else %}❌ Critical Issues{% endif %}
+            </h5>
+            <p class="text-muted mb-2" style="font-size:13px;">{{ single_qc.summary }}</p>
+            <div style="display:flex;gap:8px;">
+              {% if single_qc.counts.critical > 0 %}
+                <span class="badge-pill badge-danger">
+                  {{ single_qc.counts.critical }} critical
+                </span>
+              {% endif %}
+              {% if single_qc.counts.warning > 0 %}
+                <span class="badge-pill badge-gold">
+                  {{ single_qc.counts.warning }} warning(s)
+                </span>
+              {% endif %}
+              {% if single_qc.counts.info > 0 %}
+                <span class="badge-pill badge-blue">
+                  {{ single_qc.counts.info }} note(s)
+                </span>
+              {% endif %}
+              {% if single_qc.counts.critical == 0 and single_qc.counts.warning == 0 and single_qc.counts.info == 0 %}
+                <span class="badge-pill badge-success">No issues found</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Issue list -->
+        {% if single_qc.issues %}
+        <div class="mt-4">
+          <h6 class="section-heading mb-3">Issues Found</h6>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            {% for issue in single_qc.issues %}
+            <div class="dq-issue-card dq-issue-card-{{ issue.severity }}">
+              <div class="dq-issue-icon">
+                <i class="bi bi-{% if issue.severity=='critical' %}x-circle-fill{% elif issue.severity=='warning' %}exclamation-triangle-fill{% else %}info-circle-fill{% endif %}"></i>
+              </div>
+              <div class="dq-issue-body">
+                <div class="dq-issue-field">{{ issue.field.replace('_',' ')|title }}</div>
+                <div class="dq-issue-msg">{{ issue.message }}</div>
+              </div>
+              <div class="dq-issue-sev dq-sev-{{ issue.severity }}">
+                {{ issue.severity|upper }}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if single_qc.passed %}
+        <div class="dq-banner dq-banner-success mt-4">
+          <i class="bi bi-check-circle-fill me-2"></i>
+          <strong>Record passed validation!</strong>
+          <a href="{{ url_for('predict') }}" class="ms-2"
+             style="color:var(--accent-green);font-weight:600;">
+            Go to Predict →
+          </a>
+        </div>
+        {% endif %}
+
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon"><i class="bi bi-person-check"></i></div>
+        <h5>Fill in the form to validate</h5>
+        <p>The quality checker will score the record 0–100 and flag any<br>
+           issues before you run a prediction or import.</p>
+        <div class="model-chips">
+          <span class="chip"><i class="bi bi-check2-circle"></i>Critical blockers</span>
+          <span class="chip"><i class="bi bi-check2-circle"></i>Warnings</span>
+          <span class="chip"><i class="bi bi-check2-circle"></i>Informational notes</span>
+          <span class="chip"><i class="bi bi-check2-circle"></i>Cross-field logic</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-csv').style.display    = tab === 'csv'    ? '' : 'none';
+  document.getElementById('tab-single').style.display = tab === 'single' ? '' : 'none';
+  document.querySelectorAll('.dq-tab').forEach((el, i) => {
+    el.classList.toggle('dq-tab-active', (tab === 'csv' && i === 0) || (tab === 'single' && i === 1));
+  });
+}
+
+// ── Live quality check as user types ────────────────────────────────────────
+const CSRF = "{{ csrf_token() }}";
+let liveTimer = null;
+
+function triggerLiveCheck() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(runLiveCheck, 600);
+}
+
+async function runLiveCheck() {
+  const name    = document.getElementById('qcName')?.value  || '';
+  const age     = document.getElementById('qcAge')?.value   || '';
+  const gender  = document.getElementById('qcGender')?.value|| '';
+  const freq    = document.getElementById('qcFreq')?.value  || '';
+  const spend   = document.getElementById('qcSpend')?.value || '';
+  const dt      = document.getElementById('qcDate')?.value  || '';
+
+  if (!name && !age && !spend) return;   // nothing entered yet
+
+  try {
+    const resp = await fetch('/api/check-quality', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken': CSRF},
+      body: JSON.stringify({
+        name, age, gender,
+        purchase_freq: freq,
+        total_spending: spend,
+        last_purchase_date: dt,
+      })
+    });
+    const data = await resp.json();
+    updateLiveBar(data);
+  } catch(e) {}
+}
+
+function updateLiveBar(data) {
+  const bar  = document.getElementById('liveQcBar');
+  const fill = document.getElementById('liveQcFill');
+  const num  = document.getElementById('liveQcScore');
+  const msg  = document.getElementById('liveQcMsg');
+
+  bar.style.display = '';
+  const s = data.score || 0;
+  fill.style.width      = s + '%';
+  fill.style.background = s >= 80 ? '#00d97e' : (s >= 50 ? '#ffd166' : '#ff4d6d');
+  num.textContent       = s + '/100';
+  num.style.color       = s >= 80 ? '#00d97e' : (s >= 50 ? '#ffd166' : '#ff4d6d');
+  msg.textContent       = data.summary || '';
+
+  // Show first critical issue inline if any
+  const crit = (data.issues || []).find(i => i.severity === 'critical');
+  if (crit) msg.textContent = '⚠ ' + crit.message;
+}
+
+// Attach live listeners
+['qcName','qcAge','qcGender','qcFreq','qcSpend','qcDate'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', triggerLiveCheck);
+  if (el) el.addEventListener('change', triggerLiveCheck);
+});
+</script>
+{% endblock %}

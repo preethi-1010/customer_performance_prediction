@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}AI Chatbot – CustPredict{% endblock %}
+{% block page_title %}AI Chatbot{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Chat window -->
+  <div class="col-lg-8">
+    <div class="chat-card">
+      <div class="chat-header">
+        <div class="chat-avatar"><i class="bi bi-robot"></i></div>
+        <div>
+          <h5 class="mb-0">CustBot</h5>
+          <span class="chat-status"><span class="status-dot"></span> Online · Powered by Claude AI</span>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        <!-- Welcome message -->
+        <div class="msg msg-bot">
+          <div class="msg-avatar"><i class="bi bi-robot"></i></div>
+          <div class="msg-bubble">
+            Hi {{ current_user.username }}! 👋 I'm CustBot, your AI business analyst.<br><br>
+            I have access to your customer data:
+            <strong>{{ context.total }} customers</strong>,
+            <strong>{{ context.churn_yes }} at churn risk</strong>,
+            average CLV of <strong>{{ context.avg_clv }}/100</strong>.<br><br>
+            Ask me anything about your customers, churn risk, CLV scores, segments, or business strategy!
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div id="typingIndicator" class="typing-indicator" style="display:none;">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" class="chat-input"
+                 placeholder="Ask about your customers, churn risk, CLV..."
+                 onkeydown="if(event.key==='Enter')sendMessage()"/>
+          <button onclick="sendMessage()" class="chat-send-btn" id="sendBtn">
+            <i class="bi bi-send-fill"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Suggestions & Context -->
+  <div class="col-lg-4">
+    <div class="data-card p-4 mb-4">
+      <h6 class="section-heading mb-3"><i class="bi bi-lightning-charge me-2"></i>Quick Questions</h6>
+      <div class="suggestions">
+        {% set suggestions = [
+          "Which customers are most likely to churn?",
+          "How can I improve my CLV scores?",
+          "What does my Gold segment look like?",
+          "Give me a strategy to retain at-risk customers",
+          "Which customers should I focus on first?",
+          "What does the CLV score mean?",
+          "Explain the SHAP values for churn prediction",
+          "How many high-value customers do I have?",
+          "What's a good churn rate benchmark?",
+          "How can I move Bronze customers to Silver?",
+        ] %}
+        {% for s in suggestions %}
+        <button class="suggestion-btn" onclick="askSuggestion(this)">{{ s }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="data-card p-4">
+      <h6 class="section-heading mb-3"><i class="bi bi-bar-chart me-2"></i>Your Data Summary</h6>
+      <div class="detail-row"><span>Total Customers</span><strong>{{ context.total }}</strong></div>
+      <div class="detail-row"><span>Churn Risk</span>
+        <span class="badge-pill badge-danger">{{ context.churn_yes }}</span></div>
+      <div class="detail-row"><span>High Value</span>
+        <span class="badge-pill badge-gold">{{ context.high_value }}</span></div>
+      <div class="detail-row"><span>Avg CLV Score</span>
+        <strong>{{ context.avg_clv }}/100</strong></div>
+      <div class="mt-3">
+        <a href="{{ url_for('customers') }}" class="btn-action-pill btn-blue w-100" style="justify-content:center;font-size:12px;">
+          <i class="bi bi-people me-1"></i> View All Customers
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let history = [];
+const CSRF  = "{{ csrf_token() }}";
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  appendMsg('user', msg);
+  input.value = '';
+  history.push({role:'user', content:msg});
+  showTyping(true);
+
+  document.getElementById('sendBtn').disabled = true;
+
+  try {
+    const res  = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-CSRFToken': CSRF},
+      body: JSON.stringify({message: msg, history: history.slice(0,-1)})
+    });
+    const data = await res.json();
+    const reply = data.reply || data.error || 'Sorry, something went wrong.';
+    appendMsg('bot', reply);
+    history.push({role:'assistant', content:reply});
+  } catch(e) {
+    appendMsg('bot', 'Connection error. Please try again.');
+  } finally {
+    showTyping(false);
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+function appendMsg(role, text) {
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `msg msg-${role}`;
+  div.innerHTML = role === 'bot'
+    ? `<div class="msg-avatar"><i class="bi bi-robot"></i></div><div class="msg-bubble">${text.replace(/\n/g,'<br>')}</div>`
+    : `<div class="msg-bubble msg-user-bubble">${text}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function showTyping(show) {
+  document.getElementById('typingIndicator').style.display = show ? 'flex' : 'none';
+  const box = document.getElementById('chatMessages');
+  box.scrollTop = box.scrollHeight;
+}
+
+function askSuggestion(btn) {
+  document.getElementById('chatInput').value = btn.textContent;
+  sendMessage();
+}
+</script>
+{% endblock %}

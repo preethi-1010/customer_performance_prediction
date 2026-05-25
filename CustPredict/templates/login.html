@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Sign In – CustPredict{% endblock %}
+
+{% block auth_content %}
+<div class="login-wrapper">
+  <div class="login-card">
+
+    <!-- Brand -->
+    <div class="login-brand">
+      <span class="logo-icon" style="font-size:38px;display:block;margin-bottom:10px;
+        background:linear-gradient(135deg,#4f8ef7,#00cfdd);
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+        background-clip:text;">◈</span>
+      <h2>CustPredict</h2>
+      <p>AI-Powered Customer Intelligence</p>
+    </div>
+
+    <!-- Flash messages -->
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ cat }} mb-3">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- Default credentials hint -->
+    <div class="default-creds-box" onclick="fillDefaults()" title="Click to auto-fill">
+      <div class="dc-header">
+        <i class="bi bi-info-circle-fill me-2" style="color:var(--accent-blue);"></i>
+        <strong>Default Admin Credentials</strong>
+        <span class="dc-click-hint">click to fill →</span>
+      </div>
+      <div class="dc-row">
+        <span class="dc-label">Username</span>
+        <code class="dc-val">admin</code>
+      </div>
+      <div class="dc-row">
+        <span class="dc-label">Password</span>
+        <code class="dc-val">admin123</code>
+      </div>
+    </div>
+
+    <!-- Login form -->
+    <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+      <div class="form-group-custom">
+        <label>Username or Email</label>
+        <div class="input-wrap">
+          <i class="bi bi-person"></i>
+          <input type="text" name="identifier" id="identifierInput"
+                 class="form-control" placeholder="admin" required autofocus/>
+        </div>
+      </div>
+
+      <div class="form-group-custom">
+        <label>Password</label>
+        <div class="input-wrap">
+          <i class="bi bi-lock"></i>
+          <input type="password" name="password" id="passwordInput"
+                 class="form-control" placeholder="••••••••" required/>
+          <button type="button" onclick="togglePwd()" class="pwd-toggle" tabindex="-1">
+            <i class="bi bi-eye" id="pwdEyeIcon"></i>
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin:-8px 0 14px;">
+        <a href="{{ url_for('forgot_password') }}"
+           style="font-size:12px;color:var(--text-muted);">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn-login">
+        Sign In <i class="bi bi-arrow-right"></i>
+      </button>
+    </form>
+
+    <p class="login-hint" style="margin-top:20px;">
+      Don't have an account?
+      <a href="{{ url_for('register') }}" style="color:var(--accent-cyan);">Create one for free →</a>
+    </p>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* Auto-fill default credentials on box click */
+function fillDefaults() {
+  document.getElementById('identifierInput').value = 'admin';
+  document.getElementById('passwordInput').value   = 'admin123';
+  // Visual feedback
+  const box = document.querySelector('.default-creds-box');
+  box.style.borderColor = 'var(--accent-green)';
+  box.querySelector('.dc-click-hint').textContent = '✓ filled!';
+  setTimeout(() => {
+    box.style.borderColor = '';
+    box.querySelector('.dc-click-hint').textContent = 'click to fill →';
+  }, 2000);
+}
+
+/* Toggle password visibility */
+function togglePwd() {
+  const pwd  = document.getElementById('passwordInput');
+  const icon = document.getElementById('pwdEyeIcon');
+  if (pwd.type === 'password') {
+    pwd.type   = 'text';
+    icon.className = 'bi bi-eye-slash';
+  } else {
+    pwd.type   = 'password';
+    icon.className = 'bi bi-eye';
+  }
+}
+</script>
+{% endblock %}
